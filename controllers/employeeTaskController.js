@@ -1,0 +1,110 @@
+import EmployeeTask from '../models/EmployeeTask.js';
+import User from '../models/User.js';
+
+export const createTask = async (req, res) => {
+  try {
+    const { title, description, createdBy } = req.body;
+    const task = new EmployeeTask({ title, description, createdBy });
+    await task.save();
+    res.status(201).json(task);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const getAllTasks = async (req, res) => {
+  try {
+    const tasks = await EmployeeTask.find().populate('createdBy assignedTo', 'name email role');
+    res.json(tasks);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const getOpenTasks = async (req, res) => {
+  try {
+    const tasks = await EmployeeTask.find({ status: 'open', assignedTo: null });
+    res.json(tasks);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const claimTask = async (req, res) => {
+  try {
+    const { estimateTime, userId } = req.body;
+    const task = await EmployeeTask.findOne({ _id: req.params.id, status: 'open', assignedTo: null });
+    if (!task) return res.status(404).json({ message: 'Task not available for claim' });
+    task.assignedTo = userId;
+    task.status = 'claimed';
+    task.estimateTime = estimateTime;
+    task.claimedAt = new Date();
+    await task.save();
+    res.json(task);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const getMyTasks = async (req, res) => {
+  try {
+    const { userId } = req.query;
+    const tasks = await EmployeeTask.find({ assignedTo: userId }).populate('createdBy', 'name email role');
+    res.json(tasks);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const startTask = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const task = await EmployeeTask.findOne({ _id: req.params.id, assignedTo: userId });
+    if (!task) return res.status(404).json({ message: 'Task not found' });
+    task.status = 'in_progress';
+    task.startedAt = new Date();
+    await task.save();
+    res.json(task);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const pauseTask = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const task = await EmployeeTask.findOne({ _id: req.params.id, assignedTo: userId });
+    if (!task) return res.status(404).json({ message: 'Task not found' });
+    task.status = 'paused';
+    task.pausedAt = new Date();
+    await task.save();
+    res.json(task);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const completeTask = async (req, res) => {
+  try {
+    const { userId } = req.body;
+    const task = await EmployeeTask.findOne({ _id: req.params.id, assignedTo: userId });
+    if (!task) return res.status(404).json({ message: 'Task not found' });
+    task.status = 'completed';
+    task.completedAt = new Date();
+    await task.save();
+    res.json(task);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};
+
+export const getEligibleEmployees = async (req, res) => {
+  try {
+    const task = await EmployeeTask.findById(req.params.taskId);
+    if (!task) return res.status(404).json({ message: 'Task not found' });
+    const employees = await User.find({ role: 'Employee' });
+    res.json(employees);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+}; 
