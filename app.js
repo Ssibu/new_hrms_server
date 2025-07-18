@@ -9,6 +9,7 @@ import employeeTaskRoutes from './routes/employeeTask.js';
 import hrPolicyRoutes from './routes/hrPolicy.js';
 import authRoutes from './routes/auth.js';
 import auth from './middleware/auth.js';
+import userRoutes from './routes/user.js';
 
 dotenv.config();
 
@@ -32,6 +33,7 @@ app.use('/api/employee-salaries', auth, employeeSalaryRoutes);
 app.use('/api/employee-tasks', auth, employeeTaskRoutes);
 app.use('/api/hr-policies', auth, hrPolicyRoutes);
 app.use('/api/auth', authRoutes);
+app.use('/api/users', auth, userRoutes);
 
 const PORT = process.env.PORT || 5000;
 connectDB().then(() => {

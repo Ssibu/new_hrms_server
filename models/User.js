@@ -23,6 +23,10 @@ const UserSchema = new mongoose.Schema({
     default: 'Employee',
     required: true
   },
+  permissions: {
+    type: [String],
+    default: []
+  },
   resetPasswordToken: { type: String },
   resetPasswordExpires: { type: Date },
   

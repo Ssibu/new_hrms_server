@@ -6,13 +6,14 @@ import {
   updateEmployee,
   deleteEmployee
 } from '../controllers/employeeController.js';
+import permit from '../middleware/permission.js';
 
 const router = Router();
 
-router.get('/', getAllEmployees);
-router.get('/:id', getEmployeeById);
-router.post('/', createEmployee);
-router.put('/:id', updateEmployee);
-router.delete('/:id', deleteEmployee);
+router.get('/', permit('employee:read'), getAllEmployees);
+router.get('/:id', permit('employee:read'), getEmployeeById);
+router.post('/', permit('employee:create'), createEmployee);
+router.put('/:id', permit('employee:update'), updateEmployee);
+router.delete('/:id', permit('employee:delete'), deleteEmployee);
 
 export default router; 
