@@ -18,17 +18,7 @@ router.post('/', createTask);
 router.get('/', getAllTasks);
 router.get('/open', getOpenTasks);
 router.post('/:id/claim', claimTask);
-router.get('/my', async (req, res) => {
-  try {
-    const { userId } = req.query; // Now expects userId as query param
-    const tasks = await EmployeeTask.find({ assignedTo: userId })
-      .populate('createdBy', 'name email role')
-      .populate('assignedTo', 'name email role');
-    res.json(tasks);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
+router.get('/my', getMyTasks);
 router.post('/:id/start', startTask);
 router.post('/:id/pause', pauseTask);
 router.post('/:id/complete', completeTask);

@@ -4,6 +4,7 @@ import User from '../models/User.js';
 export const createTask = async (req, res) => {
   try {
     const { title, description, createdBy } = req.body;
+   
     const task = new EmployeeTask({ title, description, createdBy });
     await task.save();
     res.status(201).json(task);
@@ -48,9 +49,17 @@ export const claimTask = async (req, res) => {
 
 export const getMyTasks = async (req, res) => {
   try {
-    const { userId } = req.query;
+
+    // Always use the authenticated user's ID from req.user
+    const userId = req.user.userId;
+    console.log(userId)
+    
     const tasks = await EmployeeTask.find({ assignedTo: userId }).populate('createdBy', 'name email role');
     res.json(tasks);
+    console.log(tasks)
+    
+    
+    
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
