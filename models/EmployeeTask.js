@@ -10,7 +10,8 @@ const EmployeeTaskSchema = new mongoose.Schema({
   claimedAt: { type: Date },
   startedAt: { type: Date },
   pausedAt: { type: Date },
-  completedAt: { type: Date }
+  completedAt: { type: Date },
+  rating: { type: Number, min: 1, max: 5 },
 }, { timestamps: true });
 
 export default mongoose.model('EmployeeTask', EmployeeTaskSchema); 

@@ -91,6 +91,26 @@ export const completeTask = async (req, res) => {
     if (!task) return res.status(404).json({ message: 'Task not found' });
     task.status = 'completed';
     task.completedAt = new Date();
+
+    // Calculate rating
+    let rating = 3; // default
+    if (task.estimateTime && task.startedAt && task.completedAt) {
+      const actualTime = (task.completedAt - task.startedAt) / (1000 * 60); // in minutes
+      const estimate = task.estimateTime;
+      const percent = (actualTime / estimate) * 100;
+      if (percent <= 75) {
+        rating = 5;
+      } else if (percent > 75 && percent <= 100) {
+        rating = 4;
+      } else if (percent > 100 && percent <= 130) {
+        rating = 3;
+      } else if (percent > 130 && percent < 150) {
+        rating = 2;
+      } else if (percent >= 150) {
+        rating = 1;
+      }
+    }
+    task.rating = rating;
     await task.save();
     res.json(task);
   } catch (err) {

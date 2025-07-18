@@ -1,4 +1,6 @@
 import Employee from '../models/Employee.js';
+import User from '../models/User.js';
+import bcrypt from 'bcrypt';
 
 export const getAllEmployees = async (req, res) => {
   try {
@@ -23,6 +25,18 @@ export const createEmployee = async (req, res) => {
   try {
     const newEmployee = new Employee(req.body);
     await newEmployee.save();
+
+    // Register user in User collection
+    const { name, email, role } = req.body;
+    if (email) {
+      const existingUser = await User.findOne({ email });
+      if (!existingUser) {
+        const hashedPassword = await bcrypt.hash('password', 10);
+        const user = new User({ name, email, password: hashedPassword, role: 'Employee' });
+        await user.save();
+      }
+    }
+
     res.status(201).json(newEmployee);
   } catch (err) {
     res.status(400).json({ error: err.message });
