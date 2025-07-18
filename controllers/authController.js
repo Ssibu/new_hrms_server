@@ -53,4 +53,12 @@ export const logout = (req, res) => {
     sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
   });
   res.json({ success: true });
+};
+
+export const getMe = (req, res) => {
+  if (req.user) {
+    res.json({ user: req.user });
+  } else {
+    res.status(401).json({ error: 'Not authenticated' });
+  }
 }; 
