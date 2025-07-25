@@ -136,4 +136,20 @@ export const getEligibleEmployees = async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: err.message });
   }
-}; 
+};
+
+export const getTasksByEmployee = async (req, res) => {
+  try {
+    const { employeeId } = req.params;
+    
+    // Validate that the user is admin or has appropriate permissions
+    if (req.user.role !== 'Admin' && (!req.user.permissions || !req.user.permissions.includes('task:read'))) {
+      return res.status(403).json({ message: 'Access denied' });
+    }
+    
+    const tasks = await EmployeeTask.find({ assignedTo: employeeId }).populate('createdBy', 'name email role');
+    res.json(tasks);
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
+};

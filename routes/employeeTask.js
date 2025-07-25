@@ -8,7 +8,8 @@ import {
   startTask,
   pauseTask,
   completeTask,
-  getEligibleEmployees
+  getEligibleEmployees,
+  getTasksByEmployee
 } from '../controllers/employeeTaskController.js';
 import EmployeeTask from '../models/EmployeeTask.js'; // Added import for EmployeeTask model
 import permit from '../middleware/permission.js';
@@ -24,5 +25,6 @@ router.post('/:id/start', permit('task:update'), startTask);
 router.post('/:id/pause', permit('task:update'), pauseTask);
 router.post('/:id/complete', permit('task:update'), completeTask);
 router.get('/eligible/:taskId', permit('task:read'), getEligibleEmployees);
+router.get('/employee/:employeeId', permit('task:read'), getTasksByEmployee);
 
 export default router; 
