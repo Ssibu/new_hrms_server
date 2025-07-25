@@ -1,5 +1,6 @@
 import EmployeeTask from '../models/EmployeeTask.js';
 import User from '../models/User.js';
+import mongoose from 'mongoose';
 
 export const createTask = async (req, res) => {
   try {
@@ -146,8 +147,13 @@ export const getTasksByEmployee = async (req, res) => {
     if (req.user.role !== 'Admin' && (!req.user.permissions || !req.user.permissions.includes('task:read'))) {
       return res.status(403).json({ message: 'Access denied' });
     }
+    if (!mongoose.Types.ObjectId.isValid(employeeId)) {
+      return res.status(400).json({ message: 'Invalid employee ID' });
+    }
     
-    const tasks = await EmployeeTask.find({ assignedTo: employeeId }).populate('createdBy', 'name email role');
+    
+    const tasks = await EmployeeTask.find({ assignedTo: '687a4534f7043dd2d7ef5606' }).populate('createdBy', 'name email role');
+    console.log(tasks)
     res.json(tasks);
   } catch (err) {
     res.status(500).json({ message: err.message });
