@@ -5,10 +5,11 @@ export const getAllLeavePolicies = async (req, res) => {
   try {
     const policies = await LeavePolicy.find().populate('createdBy', 'name email');
     res.json(policies);
+    console.log(policies)
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
-};
+};  
 
 // Get leave policy by ID
 export const getLeavePolicyById = async (req, res) => {
@@ -16,6 +17,7 @@ export const getLeavePolicyById = async (req, res) => {
     const policy = await LeavePolicy.findById(req.params.id).populate('createdBy', 'name email');
     if (!policy) return res.status(404).json({ error: 'Leave policy not found' });
     res.json(policy);
+    console.log(policy)
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
