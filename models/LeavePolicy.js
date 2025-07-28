@@ -1,17 +1,29 @@
 import mongoose from 'mongoose';
 
 const LeavePolicySchema = new mongoose.Schema({
-  type: { 
-    type: String, 
-    enum: ['CL', 'EL', 'SL'], 
-    required: true 
+  type: {
+    type: String,
+    // You might want to add more types like 'LWP' (Leave Without Pay)
+    enum: ['CL', 'EL', 'SL', 'LWP'],
+    required: true,
+    unique: true // A policy type (like 'CL') should be unique
   },
   description: String,
-  totalDaysPerYear: Number,
-  createdBy: { 
-    type: mongoose.Schema.Types.ObjectId, 
-    ref: 'User' 
+  category: {
+    type: String,
+    enum: ['Paid', 'Unpaid'],
+    required: true
+  },
+  // This field is only relevant for 'Paid' leave policies
+  totalDaysPerYear: {
+    type: Number,
+    // Make this field required only if the category is 'Paid'
+    required: function() { return this.category === 'Paid'; }
+  },
+  createdBy: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
   }
 }, { timestamps: true });
 
-export default mongoose.model('LeavePolicy', LeavePolicySchema); 
+export default mongoose.model('LeavePolicy', LeavePolicySchema);
