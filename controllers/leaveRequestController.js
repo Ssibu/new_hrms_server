@@ -1,22 +1,21 @@
 import LeaveRequest from '../models/LeaveRequest.js';
 import LeaveBalance from '../models/LeaveBalance.js';
 import LeavePolicy from '../models/LeavePolicy.js';
-import User from '../models/User.js';
+import User from '../models/User.js'; // Keep this for populating user data
 
-// Get all leave requests (for HR)
+// Get all leave requests (for HR/Admin)
+// --- IMPROVED: Added filtering by leaveCategory ---
 export const getAllLeaveRequests = async (req, res) => {
   try {
-    const { status, employee, leaveType, startDate, endDate } = req.query;
+    const { status, employee, leaveType, leaveCategory, startDate, endDate } = req.query;
     let filter = {};
 
     if (status) filter.status = status;
     if (employee) filter.employee = employee;
     if (leaveType) filter.leaveType = leaveType;
+    if (leaveCategory) filter.leaveCategory = leaveCategory; // New filter option
     if (startDate && endDate) {
-      filter.appliedAt = {
-        $gte: new Date(startDate),
-        $lte: new Date(endDate)
-      };
+      filter.fromDate = { $gte: new Date(startDate), $lte: new Date(endDate) };
     }
 
     const requests = await LeaveRequest.find(filter)
@@ -30,7 +29,7 @@ export const getAllLeaveRequests = async (req, res) => {
   }
 };
 
-// Get leave requests for current employee
+// Get leave requests for current employee (No changes needed)
 export const getMyLeaveRequests = async (req, res) => {
   try {
     const requests = await LeaveRequest.find({ employee: req.user.userId })
@@ -44,50 +43,71 @@ export const getMyLeaveRequests = async (req, res) => {
 };
 
 // Create new leave request
+// --- HEAVILY MODIFIED ---
 export const createLeaveRequest = async (req, res) => {
   try {
     const { leaveType, fromDate, toDate, reason } = req.body;
+    const employeeId = req.user.userId;
 
-    // Validate dates
+    // --- START: NEW VALIDATION & LOGIC ---
+
+    // 1. Find the policy for the requested leave type to determine its category
+    const policy = await LeavePolicy.findOne({ type: leaveType });
+    if (!policy) {
+      return res.status(400).json({ error: `The leave type '${leaveType}' is not a valid policy.` });
+    }
+
+    // 2. Validate Dates
     const from = new Date(fromDate);
     const to = new Date(toDate);
+    // Set time to start of day for accurate "past" comparison
     const today = new Date();
+    today.setHours(0, 0, 0, 0);
 
     if (from < today) {
-      return res.status(400).json({ error: 'Cannot apply for leave in the past' });
+      return res.status(400).json({ error: 'Cannot apply for leave in the past.' });
     }
-
     if (to < from) {
-      return res.status(400).json({ error: 'End date cannot be before start date' });
+      return res.status(400).json({ error: 'End date cannot be before start date.' });
     }
 
-    // Calculate number of days (excluding weekends)
-    const days = calculateWorkingDays(from, to);
+    // 3. Conditional Logic: Check balance ONLY if the policy is 'Paid'
+    if (policy.category === 'Paid') {
+      const days = calculateWorkingDays(from, to);
+      if (days <= 0) {
+        return res.status(400).json({ error: "The selected date range contains no working days." });
+      }
 
-    // Check leave balance
-    const balance = await LeaveBalance.findOne({
-      employee: req.user.userId,
-      leaveType,
-      year: new Date().getFullYear()
-    });
-
-    if (!balance) {
-      return res.status(400).json({ error: 'No leave balance found for this type' });
-    }
-
-    if (balance.used + days > balance.total) {
-      return res.status(400).json({ 
-        error: `Insufficient leave balance. Available: ${balance.total - balance.used} days` 
+      const balance = await LeaveBalance.findOne({
+        employee: employeeId,
+        leaveType: leaveType,
+        year: from.getFullYear()
       });
+
+      if (!balance) {
+        // This can happen if balances weren't generated for the employee/year
+        return res.status(400).json({ error: `A balance record for the paid leave type '${leaveType}' does not exist for you.` });
+      }
+
+      const availableDays = balance.total - balance.used;
+      if (availableDays < days) {
+        return res.status(400).json({
+          error: `Insufficient leave balance for '${leaveType}'. You need ${days} days, but only have ${availableDays} available.`
+        });
+      }
     }
 
+    // 4. Create the new request, storing the category from the policy
     const newRequest = new LeaveRequest({
-      employee: req.user.userId,
-      leaveType,
+      employee: employeeId,
+      leaveType: policy.type,
+      leaveCategory: policy.category, // <-- Crucial: Save the category from the policy
       fromDate: from,
       toDate: to,
       reason
     });
+
+    // --- END: NEW VALIDATION & LOGIC ---
 
     await newRequest.save();
     res.status(201).json(newRequest);
@@ -96,65 +116,75 @@ export const createLeaveRequest = async (req, res) => {
   }
 };
 
-// Approve/Reject leave request (HR only)
+
+// Approve/Reject leave request (for HR/Admin)
+// --- HEAVILY MODIFIED ---
 export const updateLeaveRequestStatus = async (req, res) => {
   try {
     const { status, remarks } = req.body;
     const requestId = req.params.id;
 
+    if (!['Approved', 'Rejected'].includes(status)) {
+      return res.status(400).json({ error: "Invalid status provided." });
+    }
+
     const leaveRequest = await LeaveRequest.findById(requestId);
     if (!leaveRequest) {
-      return res.status(404).json({ error: 'Leave request not found' });
+      return res.status(404).json({ error: 'Leave request not found.' });
     }
 
     if (leaveRequest.status !== 'Pending') {
-      return res.status(400).json({ error: 'Leave request has already been processed' });
+      return res.status(400).json({ error: `This leave request has already been '${leaveRequest.status}'.` });
     }
 
-    leaveRequest.status = status;
-    leaveRequest.actionBy = req.user.userId;
-    leaveRequest.actionAt = new Date();
-    leaveRequest.remarks = remarks;
+    // --- START: NEW CONDITIONAL LOGIC ---
 
-    // If approved, update leave balance
-    if (status === 'Approved') {
+    // Update the leave balance ONLY if the request is 'Approved' AND its category is 'Paid'
+    if (status === 'Approved' && leaveRequest.leaveCategory === 'Paid') {
       const days = calculateWorkingDays(leaveRequest.fromDate, leaveRequest.toDate);
-      
-      let balance = await LeaveBalance.findOne({
+
+      const balance = await LeaveBalance.findOne({
         employee: leaveRequest.employee,
         leaveType: leaveRequest.leaveType,
-        year: new Date().getFullYear()
+        year: new Date(leaveRequest.fromDate).getFullYear()
       });
-
+      
+      // Safety check: Ensure balance exists and is sufficient before deducting
       if (!balance) {
-        // Create balance if doesn't exist
-        const policy = await LeavePolicy.findOne({ type: leaveRequest.leaveType });
-        if (!policy) {
-          return res.status(400).json({ error: 'Leave policy not found' });
-        }
-
-        balance = new LeaveBalance({
-          employee: leaveRequest.employee,
-          leaveType: leaveRequest.leaveType,
-          total: policy.totalDaysPerYear,
-          used: days,
-          year: new Date().getFullYear()
-        });
-      } else {
-        balance.used += days;
+          return res.status(400).json({ error: `Cannot approve: No leave balance record found for employee for '${leaveRequest.leaveType}'.` });
       }
-
+      if (balance.total - balance.used < days) {
+          return res.status(400).json({ error: `Cannot approve: Employee has insufficient balance for '${leaveRequest.leaveType}'.` });
+      }
+      
+      // If checks pass, update the balance
+      balance.used += days;
       await balance.save();
     }
+    // For 'Unpaid' leaves or 'Rejected' requests, we do nothing to the balance.
+
+    // --- END: NEW CONDITIONAL LOGIC ---
+
+    // Update the request itself regardless of the outcome
+    leaveRequest.status = status;
+    leaveRequest.remarks = remarks;
+    leaveRequest.actionBy = req.user.userId;
+    leaveRequest.actionAt = new Date();
 
     await leaveRequest.save();
-    res.json(leaveRequest);
+
+    const updatedRequest = await LeaveRequest.findById(requestId)
+      .populate('employee', 'name email role')
+      .populate('actionBy', 'name email');
+
+    res.json(updatedRequest);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }
 };
 
-// Get leave request by ID
+
+// Get leave request by ID (No changes needed)
 export const getLeaveRequestById = async (req, res) => {
   try {
     const request = await LeaveRequest.findById(req.params.id)
@@ -168,7 +198,7 @@ export const getLeaveRequestById = async (req, res) => {
   }
 };
 
-// Helper function to calculate working days
+// Helper function to calculate working days (Unchanged)
 function calculateWorkingDays(startDate, endDate) {
   let days = 0;
   const current = new Date(startDate);
@@ -183,4 +213,4 @@ function calculateWorkingDays(startDate, endDate) {
   }
 
   return days;
-} 
+}
