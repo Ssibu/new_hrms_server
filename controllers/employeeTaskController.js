@@ -142,6 +142,8 @@ export const getEligibleEmployees = async (req, res) => {
 export const getTasksByEmployee = async (req, res) => {
   try {
     const { employeeId } = req.params;
+    console.log(employeeId)
+    
     
     // Validate that the user is admin or has appropriate permissions
     if (req.user.role !== 'Admin' && (!req.user.permissions || !req.user.permissions.includes('task:read'))) {
@@ -152,7 +154,7 @@ export const getTasksByEmployee = async (req, res) => {
     }
     
     
-    const tasks = await EmployeeTask.find({ assignedTo: '687a4534f7043dd2d7ef5606' }).populate('createdBy', 'name email role');
+    const tasks = await EmployeeTask.find({ assignedTo: '687a444ff7043dd2d7ef55e6' }).populate('createdBy', 'name email role');
     console.log(tasks)
     res.json(tasks);
   } catch (err) {
