@@ -1,7 +1,6 @@
 import LeavePolicy from '../models/LeavePolicy.js';
 
-// Get all leave policies
-// NO CHANGES NEEDED
+// Get all leave policies - NO CHANGES NEEDED
 export const getAllLeavePolicies = async (req, res) => {
   try {
     const policies = await LeavePolicy.find().populate('createdBy', 'name email');
@@ -11,8 +10,7 @@ export const getAllLeavePolicies = async (req, res) => {
   }
 };
 
-// Get leave policy by ID
-// NO CHANGES NEEDED
+// Get leave policy by ID - NO CHANGES NEEDED
 export const getLeavePolicyById = async (req, res) => {
   try {
     const policy = await LeavePolicy.findById(req.params.id).populate('createdBy', 'name email');
@@ -23,44 +21,47 @@ export const getLeavePolicyById = async (req, res) => {
   }
 };
 
-// Create new leave policy
-// --- MODIFIED ---
+// --- HEAVILY MODIFIED to handle renewalType logic ---
 export const createLeavePolicy = async (req, res) => {
   try {
-    // Destructure the new 'monthlyAllowance' field
-    const { type, description, category, totalDaysPerYear, monthlyAllowance } = req.body;
+    // Destructure all new fields from the request body
+    const { type, description, category, renewalType, totalDaysPerYear, monthlyDayLimit } = req.body;
 
-    // --- START: MODIFIED VALIDATION LOGIC ---
-    if (!category) {
-      return res.status(400).json({ error: 'Leave category (\'Paid\' or \'Unpaid\') is required.' });
-    }
-
-    // Validation for 'Paid' leave
-    if (category === 'Paid' && (!totalDaysPerYear || totalDaysPerYear <= 0)) {
-      return res.status(400).json({ error: 'Total days per year is required for a Paid leave policy and must be greater than 0.' });
-    }
-
-    // New: Validation for monthly allowance for specific types
-    if (['CL', 'SL', 'EL'].includes(type) && (!monthlyAllowance || monthlyAllowance <= 0)) {
-        return res.status(400).json({ error: `A monthly allowance is required for leave type '${type}' and must be greater than 0.` });
-    }
+    // --- START: NEW VALIDATION LOGIC ---
 
     const policyData = {
       type,
       description,
       category,
-      createdBy: req.user.userId // Assuming req.user is populated
+      createdBy: req.user.userId
     };
 
+    // Validation is primarily for 'Paid' policies
     if (category === 'Paid') {
-      policyData.totalDaysPerYear = totalDaysPerYear;
-    }
+      if (!renewalType || !['Yearly', 'Monthly'].includes(renewalType)) {
+        return res.status(400).json({ error: 'Renewal Type (\'Yearly\' or \'Monthly\') is required for a Paid policy.' });
+      }
+      policyData.renewalType = renewalType;
 
-    // New: Add monthlyAllowance to the data if the type requires it
-    if (['CL', 'SL', 'EL'].includes(type)) {
-      policyData.monthlyAllowance = monthlyAllowance;
+      if (renewalType === 'Yearly') {
+        if (!totalDaysPerYear || totalDaysPerYear <= 0) {
+          return res.status(400).json({ error: 'Total Days Per Year is required for a Yearly policy.' });
+        }
+        policyData.totalDaysPerYear = totalDaysPerYear;
+        // monthlyDayLimit is optional for Yearly policies (it's a restriction)
+        if (monthlyDayLimit) {
+          policyData.monthlyDayLimit = monthlyDayLimit;
+        }
+      } else { // renewalType is 'Monthly'
+        if (!monthlyDayLimit || monthlyDayLimit <= 0) {
+          return res.status(400).json({ error: 'Monthly Day Limit (as a grant) is required for a Monthly policy.' });
+        }
+        policyData.monthlyDayLimit = monthlyDayLimit;
+        // totalDaysPerYear is not applicable for Monthly policies
+      }
     }
-    // --- END: MODIFIED VALIDATION LOGIC ---
+    // For 'Unpaid' policies, no further validation is needed.
+    // --- END: NEW VALIDATION LOGIC ---
 
     const existingPolicy = await LeavePolicy.findOne({ type });
     if (existingPolicy) {
@@ -68,55 +69,52 @@ export const createLeavePolicy = async (req, res) => {
     }
 
     const newPolicy = new LeavePolicy(policyData);
-    await newPolicy.save(); // Mongoose schema validation will also run here
+    // The .save() will trigger the final, schema-level conditional 'required' checks
+    await newPolicy.save();
     res.status(201).json(newPolicy);
   } catch (err) {
+    // Catches Mongoose validation errors as well
     res.status(400).json({ error: err.message });
   }
 };
 
-
-// Update leave policy
-// --- MODIFIED ---
+// --- HEAVILY MODIFIED to handle conditional updates ---
 export const updateLeavePolicy = async (req, res) => {
   try {
-    const { category, totalDaysPerYear, type, monthlyAllowance } = req.body;
     const updateData = { ...req.body };
 
-    // --- START: MODIFIED UPDATE LOGIC ---
-
-    // Find the policy first to check its current state if needed
-    const policyToUpdate = await LeavePolicy.findById(req.params.id);
-    if (!policyToUpdate) {
-        return res.status(404).json({ error: 'Leave policy not found' });
-    }
+    // --- START: NEW UPDATE LOGIC ---
     
-    // If changing category to 'Unpaid', unset totalDaysPerYear
-    if (category === 'Unpaid') {
+    // If category is being changed to 'Unpaid', unset all financial/renewal fields
+    if (updateData.category === 'Unpaid') {
+      updateData.renewalType = undefined;
       updateData.totalDaysPerYear = undefined;
+      updateData.monthlyDayLimit = undefined;
+    } 
+    // If the policy type is being set, handle its requirements
+    else if (updateData.category === 'Paid' && updateData.renewalType) {
+      if (updateData.renewalType === 'Monthly') {
+        // If switching to Monthly, totalDaysPerYear is irrelevant and should be unset.
+        updateData.totalDaysPerYear = undefined;
+      }
+      // If switching to Yearly, we don't unset monthlyDayLimit as it could be an intentional restriction.
+      // The frontend should handle clearing it if desired.
     }
 
-    // Determine the final type (either the new one from req.body or the existing one)
-    const finalType = type || policyToUpdate.type;
-
-    // If the final type does not require a monthly allowance, unset it
-    if (!['CL', 'SL', 'EL'].includes(finalType)) {
-        updateData.monthlyAllowance = undefined;
-    } else {
-        // If it does require it, but no value was provided in the update, keep the old one
-        if (monthlyAllowance === undefined) {
-          updateData.monthlyAllowance = policyToUpdate.monthlyAllowance;
-        }
-    }
-    // --- END: MODIFIED UPDATE LOGIC ---
-
+    // Use findByIdAndUpdate with options to ensure schema rules are applied
     const updatedPolicy = await LeavePolicy.findByIdAndUpdate(
       req.params.id,
-      { $set: updateData }, // Use $set to apply the changes
+      { $set: updateData, $unset: { 
+          // Explicitly remove fields that are now undefined
+          ...(updateData.totalDaysPerYear === undefined && { totalDaysPerYear: 1 }),
+          ...(updateData.monthlyDayLimit === undefined && { monthlyDayLimit: 1 }),
+          ...(updateData.renewalType === undefined && { renewalType: 1 })
+        }
+      },
       {
-        new: true,
+        new: true, // Return the updated document
         runValidators: true, // This is crucial to re-run schema validations
-        context: 'query' // Helps in running validators on update
+        context: 'query'
       }
     ).populate('createdBy', 'name email');
 
@@ -129,9 +127,7 @@ export const updateLeavePolicy = async (req, res) => {
   }
 };
 
-
-// Delete leave policy
-// NO CHANGES NEEDED
+// Delete leave policy - NO CHANGES NEEDED
 export const deleteLeavePolicy = async (req, res) => {
   try {
     const deletedPolicy = await LeavePolicy.findByIdAndDelete(req.params.id);

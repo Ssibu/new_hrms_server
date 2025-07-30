@@ -1,33 +1,72 @@
 import mongoose from 'mongoose';
 
 const LeavePolicySchema = new mongoose.Schema({
+  /**
+   * The short code for the leave policy (e.g., 'CL', 'SL').
+   */
   type: {
     type: String,
-    // You might want to add more types like 'LWP' (Leave Without Pay)
     enum: ['CL', 'EL', 'SL', 'LWP'],
     required: true,
-    unique: true // A policy type (like 'CL') should be unique
+    unique: true
   },
+
+  /**
+   * A user-friendly description of the leave policy.
+   */
   description: String,
+
+  /**
+   * Defines if the leave is Paid or Unpaid. Crucial for balance calculations.
+   */
   category: {
     type: String,
     enum: ['Paid', 'Unpaid'],
     required: true
   },
-  // This field is only relevant for 'Paid' leave policies
-  totalDaysPerYear: {
-    type: Number,
-    // Make this field required only if the category is 'Paid'
+  
+  /**
+   * --- NEW & CRUCIAL ---
+   * Defines the core behavior of how leave is granted and renewed.
+   * 'Yearly': A block of leave is given annually.
+   * 'Monthly': A smaller amount of leave is granted each month.
+   */
+  renewalType: {
+    type: String,
+    enum: ['Yearly', 'Monthly'],
+    // Required only for 'Paid' leaves, as 'Unpaid' leaves don't have a grant/renewal cycle.
     required: function() { return this.category === 'Paid'; }
   },
-  // New field for monthly leave allowance
-  monthlyAllowance: {
+
+  /**
+   * --- MODIFIED ---
+   * Represents the total leave bucket for policies with a 'Yearly' renewal type.
+   */
+  totalDaysPerYear: {
     type: Number,
-    // This field is only required for specific paid leave types
-    required: function() {
-      return ['CL', 'SL', 'EL'].includes(this.type);
+    // This field is now only required if the policy is 'Paid' AND renews 'Yearly'.
+    required: function() { 
+      return this.category === 'Paid' && this.renewalType === 'Yearly'; 
     }
   },
+
+  /**
+   * --- MODIFIED & RENAMED FOR CLARITY ---
+   * This field now has a clear, dual purpose based on the renewalType.
+   * - For 'Monthly' policies: It is the REQUIRED number of days GRANTED each month.
+   * - For 'Yearly' policies: It is an OPTIONAL RESTRICTION on how many days can be used per month.
+   */
+  monthlyDayLimit: {
+    type: Number,
+    // It's required only if the policy is 'Paid' and renews 'Monthly'.
+    required: function() { 
+      return this.category === 'Paid' && this.renewalType === 'Monthly'; 
+    }
+  },
+
+  /**
+   * The user who created this policy.
+   */
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
