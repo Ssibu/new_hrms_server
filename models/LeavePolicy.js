@@ -20,6 +20,14 @@ const LeavePolicySchema = new mongoose.Schema({
     // Make this field required only if the category is 'Paid'
     required: function() { return this.category === 'Paid'; }
   },
+  // New field for monthly leave allowance
+  monthlyAllowance: {
+    type: Number,
+    // This field is only required for specific paid leave types
+    required: function() {
+      return ['CL', 'SL', 'EL'].includes(this.type);
+    }
+  },
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
