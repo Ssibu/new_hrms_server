@@ -45,7 +45,6 @@ async function getMonthlyUsage(employeeId, leaveType, date) {
 }
 
 
-// --- HEAVILY REWRITTEN to handle new Yearly/Monthly policy logic ---
 export const createLeaveRequest = async (req, res) => {
   try {
     const { leaveType, fromDate, toDate, reason } = req.body;
@@ -69,33 +68,44 @@ export const createLeaveRequest = async (req, res) => {
     const daysToApply = calculateWorkingDays(from, to);
     if (daysToApply <= 0) return res.status(400).json({ error: "The selected date range contains no working days." });
 
+    // --- NEW VALIDATION: Check for overlapping leave requests ---
+    // Find any request for the same employee that is 'Pending' or 'Approved' and overlaps with the new dates.
+    const overlappingRequest = await LeaveRequest.findOne({
+      employee: employeeId,
+      status: { $in: ['Pending', 'Approved'] },
+      // The logic for overlap is: (StartA <= EndB) and (EndA >= StartB)
+      // existing.fromDate <= new.toDate   AND   existing.toDate >= new.fromDate
+      fromDate: { $lte: to },
+      toDate: { $gte: from }
+    });
+
+    if (overlappingRequest) {
+      return res.status(400).json({ 
+        error: `You already have a leave request from ${new Date(overlappingRequest.fromDate).toLocaleDateString()} to ${new Date(overlappingRequest.toDate).toLocaleDateString()} that conflicts with these dates.` 
+      });
+    }
+    // --- END of new validation ---
+
+
     // 3. Perform validation based on the policy's rules
     if (policy.category === 'Paid') {
       if (policy.renewalType === 'Yearly') {
         // --- Logic for Yearly Policies ---
-        
-        // A. Check Annual Balance
         const balance = await LeaveBalance.findOne({ employee: employeeId, leaveType, year: from.getFullYear() });
         if (!balance) return res.status(400).json({ error: `A balance record for '${leaveType}' does not exist for you.` });
         if ((balance.total - balance.used) < daysToApply) {
           return res.status(400).json({ error: `Insufficient annual balance for '${leaveType}'. You have ${balance.total - balance.used} days remaining.` });
         }
-
-        // B. Check Optional Monthly Usage RESTRICTION
         if (policy.monthlyDayLimit && policy.monthlyDayLimit > 0) {
           const usedThisMonth = await getMonthlyUsage(employeeId, leaveType, from);
           if ((usedThisMonth + daysToApply) > policy.monthlyDayLimit) {
             return res.status(400).json({ error: `Monthly usage limit of ${policy.monthlyDayLimit} for '${leaveType}' would be exceeded.` });
           }
         }
-
       } else { // renewalType is 'Monthly'
         // --- Logic for Monthly Policies ---
-        
-        // A. Check the monthly GRANT amount.
         const monthlyGrant = policy.monthlyDayLimit;
         const usedThisMonth = await getMonthlyUsage(employeeId, leaveType, from);
-
         if ((usedThisMonth + daysToApply) > monthlyGrant) {
           return res.status(400).json({ error: `You have already used ${usedThisMonth} of your ${monthlyGrant} available '${leaveType}' days this month.` });
         }
@@ -122,7 +132,6 @@ export const createLeaveRequest = async (req, res) => {
 };
 
 
-// --- REWRITTEN to correctly deduct balance only for Yearly policies ---
 export const updateLeaveRequestStatus = async (req, res) => {
   try {
     const { status, remarks } = req.body;
@@ -136,15 +145,10 @@ export const updateLeaveRequestStatus = async (req, res) => {
     if (!leaveRequest) return res.status(404).json({ error: 'Leave request not found.' });
     if (leaveRequest.status !== 'Pending') return res.status(400).json({ error: `This leave request has already been '${leaveRequest.status}'.` });
     
-    // --- Core Logic: Update balance ONLY if the request is Approved, Paid, AND Yearly ---
     if (status === 'Approved' && leaveRequest.leaveCategory === 'Paid') {
-      
       const policy = await LeavePolicy.findOne({ type: leaveRequest.leaveType });
-
-      // This is the crucial check. Only deduct from balance for yearly policies.
       if (policy && policy.renewalType === 'Yearly') {
         const days = leaveRequest.numberOfDays;
-        
         await LeaveBalance.updateOne(
           {
             employee: leaveRequest.employee,
@@ -154,10 +158,8 @@ export const updateLeaveRequestStatus = async (req, res) => {
           { $inc: { used: days } }
         );
       }
-      // For 'Monthly' and 'Unpaid' leaves, we do nothing to the LeaveBalance collection.
     }
 
-    // Update the request itself with the action details
     leaveRequest.status = status;
     leaveRequest.remarks = remarks;
     leaveRequest.actionBy = req.user.userId;
@@ -175,7 +177,76 @@ export const updateLeaveRequestStatus = async (req, res) => {
 };
 
 
-// --- The following GET endpoints do not require changes ---
+export const updateLeaveRequestDate = async (req, res) => {
+    try {
+        const { fromDate, toDate } = req.body;
+        const requestId = req.params.id;
+
+        const request = await LeaveRequest.findById(requestId);
+        if (!request) {
+            return res.status(404).json({ error: 'Leave request not found.' });
+        }
+        if (request.status !== 'Pending') {
+            return res.status(400).json({ error: 'Only pending requests can be edited.' });
+        }
+
+        const from = new Date(fromDate);
+        const to = new Date(toDate);
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        if (from < today) return res.status(400).json({ error: 'Cannot set leave in the past.' });
+        if (to < from) return res.status(400).json({ error: 'End date cannot be before start date.' });
+
+        const daysToApply = calculateWorkingDays(from, to);
+        if (daysToApply <= 0) return res.status(400).json({ error: "The new date range contains no working days." });
+        
+        // --- VALIDATION for overlapping requests when EDITING ---
+        // This time, we exclude the current request being edited from the check using `_id: { $ne: requestId }`
+        const overlappingRequest = await LeaveRequest.findOne({
+            _id: { $ne: requestId }, // Exclude the request itself
+            employee: request.employee,
+            status: { $in: ['Pending', 'Approved'] },
+            fromDate: { $lte: to },
+            toDate: { $gte: from }
+        });
+
+        if (overlappingRequest) {
+            return res.status(400).json({ error: 'The new dates conflict with another one of your leave requests.' });
+        }
+
+        const policy = await LeavePolicy.findOne({ type: request.leaveType });
+        if (!policy) return res.status(400).json({ error: 'Associated leave policy not found.' });
+        
+        if (policy.category === 'Paid') {
+            if (policy.renewalType === 'Yearly') {
+                const balance = await LeaveBalance.findOne({ employee: request.employee, leaveType: request.leaveType, year: from.getFullYear() });
+                if (!balance) return res.status(400).json({ error: `Balance record not found.` });
+                if ((balance.total - balance.used) < daysToApply) {
+                    return res.status(400).json({ error: `Insufficient annual balance for the new date range.` });
+                }
+            } else { // Monthly
+                 const monthlyGrant = policy.monthlyDayLimit;
+                 const usedThisMonth = await getMonthlyUsage(request.employee, request.leaveType, from);
+                 if ((usedThisMonth + daysToApply) > monthlyGrant) {
+                    return res.status(400).json({ error: `Monthly usage limit would be exceeded with the new dates.` });
+                 }
+            }
+        }
+        
+        request.fromDate = from;
+        request.toDate = to;
+        request.numberOfDays = daysToApply;
+        
+        await request.save();
+        res.status(200).json(request);
+
+    } catch (err) {
+        res.status(400).json({ error: err.message });
+    }
+}
+
+// --- GET Endpoints (Unchanged) ---
 
 export const getAllLeaveRequests = async (req, res) => {
   try {
@@ -213,65 +284,3 @@ export const getLeaveRequestById = async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 };
-// --- NEW CONTROLLER FUNCTION to be added in leaveRequestController.js ---
-export const updateLeaveRequestDate = async (req, res) => {
-    try {
-        const { fromDate, toDate } = req.body;
-        const requestId = req.params.id;
-
-        const request = await LeaveRequest.findById(requestId);
-        if (!request) {
-            return res.status(404).json({ error: 'Leave request not found.' });
-        }
-        if (request.status !== 'Pending') {
-            return res.status(400).json({ error: 'Only pending requests can be edited.' });
-        }
-
-        // --- All the validation from your createLeaveRequest function MUST be re-run here ---
-        const from = new Date(fromDate);
-        const to = new Date(toDate);
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-
-        if (from < today) return res.status(400).json({ error: 'Cannot set leave in the past.' });
-        if (to < from) return res.status(400).json({ error: 'End date cannot be before start date.' });
-
-        // IMPORTANT: Recalculate working days
-        const daysToApply = calculateWorkingDays(from, to);
-        if (daysToApply <= 0) return res.status(400).json({ error: "The new date range contains no working days." });
-        
-        const policy = await LeavePolicy.findOne({ type: request.leaveType });
-        if (!policy) return res.status(400).json({ error: 'Associated leave policy not found.' });
-        
-        // IMPORTANT: Re-validate against balances/limits
-        if (policy.category === 'Paid') {
-            // Re-run the exact same yearly/monthly validation logic as in createLeaveRequest...
-            // This is a simplified example. You should abstract the validation logic into a reusable function
-            // to avoid code duplication and ensure consistency.
-            if (policy.renewalType === 'Yearly') {
-                const balance = await LeaveBalance.findOne({ employee: request.employee, leaveType: request.leaveType, year: from.getFullYear() });
-                if (!balance) return res.status(400).json({ error: `Balance record not found.` });
-                if ((balance.total - balance.used) < daysToApply) {
-                    return res.status(400).json({ error: `Insufficient annual balance for the new date range.` });
-                }
-            } else { // Monthly
-                 const monthlyGrant = policy.monthlyDayLimit;
-                 const usedThisMonth = await getMonthlyUsage(request.employee, request.leaveType, from);
-                 if ((usedThisMonth + daysToApply) > monthlyGrant) {
-                    return res.status(400).json({ error: `Monthly usage limit would be exceeded with the new dates.` });
-                 }
-            }
-        }
-        
-        // All checks passed, update the request
-        request.fromDate = from;
-        request.toDate = to;
-        request.numberOfDays = daysToApply;
-        
-        await request.save();
-        res.status(200).json(request);
-
-    } catch (err) {
-        res.status(400).json({ error: err.message });
-    }
-}
