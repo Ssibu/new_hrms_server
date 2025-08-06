@@ -3,6 +3,11 @@ import mongoose from 'mongoose';
 const EmployeeSchema = new mongoose.Schema({
   name: { type: String, required: true },
   empId: { type: String, required: true, unique: true },
+  emailId: {
+    type: String,
+    required: true,
+    unique: true // Ensures one employee profile per email
+  },
   number: { type: String, required: true },
   address: { type: String, required: true },
   experience: { type: String, required: true },

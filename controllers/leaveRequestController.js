@@ -3,7 +3,7 @@ import LeaveRequest from '../models/LeaveRequest.js';
 import LeaveBalance from '../models/LeaveBalance.js';
 import LeavePolicy from '../models/LeavePolicy.js';
 import User from '../models/User.js';
-
+import Attendance from '../models/Attendance.js';
 /**
  * Reusable helper to calculate working days (excluding weekends).
  */
@@ -137,29 +137,72 @@ export const updateLeaveRequestStatus = async (req, res) => {
     const { status, remarks } = req.body;
     const requestId = req.params.id;
 
+    // 1. Initial validation (remains the same)
     if (!['Approved', 'Rejected'].includes(status)) {
       return res.status(400).json({ error: "Invalid status." });
     }
 
     const leaveRequest = await LeaveRequest.findById(requestId);
-    if (!leaveRequest) return res.status(404).json({ error: 'Leave request not found.' });
-    if (leaveRequest.status !== 'Pending') return res.status(400).json({ error: `This leave request has already been '${leaveRequest.status}'.` });
-    
-    if (status === 'Approved' && leaveRequest.leaveCategory === 'Paid') {
-      const policy = await LeavePolicy.findOne({ type: leaveRequest.leaveType });
-      if (policy && policy.renewalType === 'Yearly') {
-        const days = leaveRequest.numberOfDays;
-        await LeaveBalance.updateOne(
-          {
+    if (!leaveRequest) {
+      return res.status(404).json({ error: 'Leave request not found.' });
+    }
+    if (leaveRequest.status !== 'Pending') {
+      return res.status(400).json({ error: `This leave request has already been '${leaveRequest.status}'.` });
+    }
+
+    // --- START: MODIFIED & NEW LOGIC FOR APPROVAL ---
+    if (status === 'Approved') {
+      // First, calculate the number of working days in the request.
+      // This is more reliable than using a pre-saved number.
+      const days = calculateWorkingDays(leaveRequest.fromDate, leaveRequest.toDate);
+
+      // A. Update leave balance if the leave is 'Paid'
+      if (leaveRequest.leaveCategory === 'Paid') {
+        const balance = await LeaveBalance.findOne({
             employee: leaveRequest.employee,
             leaveType: leaveRequest.leaveType,
             year: new Date(leaveRequest.fromDate).getFullYear()
-          },
+        });
+
+        // Safety check: ensure balance is still sufficient
+        if (!balance || (balance.total - balance.used < days)) {
+            return res.status(400).json({ error: `Cannot approve: Employee has insufficient balance.` });
+        }
+        
+        await LeaveBalance.updateOne(
+          { _id: balance._id },
           { $inc: { used: days } }
         );
       }
-    }
 
+      // B. NEW: Update attendance records for EVERY approved leave (Paid or Unpaid)
+      const startDate = new Date(leaveRequest.fromDate);
+      const endDate = new Date(leaveRequest.toDate);
+      let currentDate = startDate;
+
+      while (currentDate <= endDate) {
+        const dayOfWeek = currentDate.getDay();
+        if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Process only weekdays
+          
+          const recordDate = new Date(currentDate);
+          recordDate.setUTCHours(0, 0, 0, 0); // Normalize date for consistent querying
+
+          await Attendance.findOneAndUpdate(
+            { employee: leaveRequest.employee, date: recordDate },
+            { 
+              status: 'On Leave',
+              onLeaveRequest: leaveRequest._id // Link to this leave request
+            },
+            { upsert: true, new: true } // Creates the record if it doesn't exist
+          );
+        }
+        currentDate.setDate(currentDate.getDate() + 1);
+      }
+    }
+    // --- END: MODIFIED & NEW LOGIC FOR APPROVAL ---
+
+
+    // 3. Finalize the leave request update (remains the same)
     leaveRequest.status = status;
     leaveRequest.remarks = remarks;
     leaveRequest.actionBy = req.user.userId;

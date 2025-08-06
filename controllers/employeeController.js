@@ -24,6 +24,7 @@ export const getEmployeeById = async (req, res) => {
 export const createEmployee = async (req, res) => {
   try {
     const newEmployee = new Employee(req.body);
+    console.log(newEmployee);
     await newEmployee.save();
 
     // Register user in User collection
