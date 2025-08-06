@@ -10,6 +10,7 @@ import hrPolicyRoutes from './routes/hrPolicy.js';
 import leavePolicyRoutes from './routes/leavePolicy.js';
 import leaveRequestRoutes from './routes/leaveRequest.js';
 import leaveBalanceRoutes from './routes/leaveBalance.js';
+import attendanceRoutes from './routes/attendance.routes.js';
 import authRoutes from './routes/auth.js';
 import auth from './middleware/auth.js';
 import userRoutes from './routes/user.js';
@@ -40,6 +41,7 @@ app.use('/api/leave-requests', auth, leaveRequestRoutes);
 app.use('/api/leave-balances', auth, leaveBalanceRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', auth, userRoutes);
+app.use('/api/attendance', auth, attendanceRoutes);
 
 const PORT = process.env.PORT || 5000;
 connectDB().then(() => {
