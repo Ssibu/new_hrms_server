@@ -93,7 +93,7 @@ export const getMyAttendance = async (req, res) => {
   try {
     const { startDate, endDate } = req.query;
     let filter = { employee: req.user.employeeId };
-    console.log(filter)
+    
 
 
     if (startDate && endDate) {
@@ -105,7 +105,7 @@ export const getMyAttendance = async (req, res) => {
 
     const records = await Attendance.find(filter).sort({ date: -1 });
     res.json(records);
-    console.log(records)
+    
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
