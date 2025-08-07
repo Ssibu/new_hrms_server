@@ -17,7 +17,7 @@ const auth = async (req, res, next) => {
     const user = await User.findById(decoded.userId).lean();
     if (!user) return res.status(401).json({ error: 'User not found' });
     
-    const employee = await Employee.findOne({ emailId: user.email }).lean();
+    const employee = await Employee.findOne({ email: user.email }).lean();
    
   
     req.user = {

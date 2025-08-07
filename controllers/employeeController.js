@@ -24,16 +24,19 @@ export const getEmployeeById = async (req, res) => {
 export const createEmployee = async (req, res) => {
   try {
     const newEmployee = new Employee(req.body);
-    console.log(newEmployee);
+    
     await newEmployee.save();
+    
 
     // Register user in User collection
     const { name, email, role } = req.body;
+    console.log(name, email, role)
     if (email) {
       const existingUser = await User.findOne({ email });
       if (!existingUser) {
         const hashedPassword = await bcrypt.hash('password', 10);
         const user = new User({ name, email, password: hashedPassword, role: 'Employee' });
+
         await user.save();
       }
     }

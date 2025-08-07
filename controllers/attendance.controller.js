@@ -19,7 +19,13 @@ const getStartOfDayUTC = (date) => {
 // @access  Private (Employee)
 export const checkIn = async (req, res) => {
   try {
-    const employeeId = req.user.userId; // Assuming user ID is attached by auth middleware
+    const useremail = req.user.email;
+    const employee = await Employee.findOne({ email: useremail }).lean();
+    const employeeId = employee ? employee._id : req.user.employeeId;
+
+    if (!employeeId) {
+      return res.status(400).json({ error: 'Employee not found for the current user.' });
+    }
     const today = getStartOfDayUTC(new Date());
 
     // Check if there's already an attendance record for today
@@ -60,7 +66,9 @@ export const checkIn = async (req, res) => {
 // @access  Private (Employee)
 export const checkOut = async (req, res) => {
   try {
-    const employeeId = req.user.userId;
+    const useremail = req.user.email;
+    const employee = await Employee.findOne({ email: useremail }).lean();
+    const employeeId = employee ? employee._id : req.user.employeeId; 
     const today = getStartOfDayUTC(new Date());
 
     const attendanceRecord = await Attendance.findOne({
