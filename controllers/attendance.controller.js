@@ -117,14 +117,24 @@ export const getMyAttendance = async (req, res) => {
 // @access  Private (Admin/HR)
 export const getAttendanceReport = async (req, res) => {
   try {
-    const { date, employeeId, status } = req.query;
+    // --- MODIFIED: Now accepts startDate and endDate instead of a single 'date' ---
+    const { startDate, endDate, employeeId, status } = req.query;
     let filter = {};
 
-    if (date) {
-      const reportDate = getStartOfDayUTC(date);
-      filter.date = reportDate;
+    // --- NEW: Date range filtering logic ---
+    // This block now correctly handles multi-day and single-day ranges.
+    if (startDate && endDate) {
+      const start = getStartOfDayUTC(startDate);
+      
+      // Set the end date to the very last millisecond of that day
+      // to ensure all records from that day are included.
+      const end = new Date(endDate);
+      end.setUTCHours(23, 59, 59, 999);
+      
+      filter.date = { $gte: start, $lte: end };
     }
 
+    // These filters work as before
     if (employeeId) {
       filter.employee = employeeId;
     }
@@ -134,19 +144,19 @@ export const getAttendanceReport = async (req, res) => {
     }
     
     const records = await Attendance.find(filter)
-      .populate('employee', 'name empId role')
+      .populate('employee', 'name empId role') // Get linked employee's details
       .populate({
-          path: 'onLeaveRequest',
+          path: 'onLeaveRequest', // If 'On Leave', get details about the leave
           select: 'leaveType leaveCategory'
       })
-      .sort({ 'employee.name': 1, date: -1 });
+      .sort({ date: 'asc', 'employee.name': 1 }); // Sort by date first, then by employee name
 
     res.json(records);
   } catch (err) {
+    console.error("Error in getAttendanceReport:", err);
     res.status(500).json({ error: err.message });
   }
 };
-
 
 // @desc    Manually update an attendance record for HR/Admin
 // @route   PUT /api/attendance/:id

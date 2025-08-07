@@ -155,7 +155,8 @@ export const getTasksByEmployee = async (req, res) => {
     
     
     const tasks = await EmployeeTask.find({ assignedTo: employeeId }).populate('createdBy', 'name email role');
-    
+    console.log(tasks);
+
     res.json(tasks);
   } catch (err) {
     res.status(500).json({ message: err.message });
