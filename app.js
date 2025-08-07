@@ -14,6 +14,7 @@ import attendanceRoutes from './routes/attendance.routes.js';
 import authRoutes from './routes/auth.js';
 import auth from './middleware/auth.js';
 import userRoutes from './routes/user.js';
+import payrollRoutes from './routes/payroll.routes.js'; 
 
 dotenv.config();
 
@@ -42,6 +43,7 @@ app.use('/api/leave-balances', auth, leaveBalanceRoutes);
 app.use('/api/auth', authRoutes);
 app.use('/api/users', auth, userRoutes);
 app.use('/api/attendance', auth, attendanceRoutes);
+app.use('/api/payroll', auth, payrollRoutes); 
 
 const PORT = process.env.PORT || 5000;
 connectDB().then(() => {
