@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { generatePayslip, getPayslip } from '../controllers/payroll.controller.js';
+import { generatePayslip, getPayslip,bulkGeneratePayslips } from '../controllers/payroll.controller.js';
 import permit from '../middleware/permission.js';
 
 const router = Router();
