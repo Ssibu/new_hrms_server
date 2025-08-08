@@ -9,5 +9,6 @@ router.post('/generate', permit('payroll:create'), generatePayslip);
 
 // Endpoint to fetch a previously generated payslip
 router.get('/:employeeId', permit('payroll:read'), getPayslip);
+router.post('/generate/bulk', permit('payroll:create'), bulkGeneratePayslips);
 
 export default router;
