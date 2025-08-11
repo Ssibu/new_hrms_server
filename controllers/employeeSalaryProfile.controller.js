@@ -11,12 +11,14 @@ export const getProfileByEmployeeId = async (req, res) => {
         return res.status(400).json({ error: 'Invalid employee ID format.' });
     }
 
+    // Find the profile and populate the nested 'component' details.
+    // This will fetch the name and type from the master SalaryComponent library.
     const profile = await EmployeeSalaryProfile.findOne({ employee: employeeId })
-      .populate('components.component'); // This populates the name and type from the master library
+      .populate('components.component'); 
 
     if (!profile) {
-      // It is NOT an error if a profile doesn't exist yet.
-      // The frontend will use this null response to show a fresh form.
+      // This is not an error. It simply means a profile hasn't been created yet.
+      // The frontend will use this null response to display a fresh form.
       return res.status(200).json(null);
     }
     
@@ -26,13 +28,13 @@ export const getProfileByEmployeeId = async (req, res) => {
   }
 };
 
-// @desc    Create or update the salary profile for an employee
+// @desc    Create or update the salary profile for a specific employee
 // @route   PUT /api/employee-salary-profiles/:employeeId
 // @access  Private (HR/Admin)
 export const createOrUpdateProfile = async (req, res) => {
   try {
     const { employeeId } = req.params;
-    // The frontend will send the basic salary and the array of assigned components
+    // The frontend will send the basic salary and the array of assigned components.
     const { basicSalary, components } = req.body;
 
     if (!mongoose.Types.ObjectId.isValid(employeeId)) {
@@ -48,12 +50,12 @@ export const createOrUpdateProfile = async (req, res) => {
       components
     };
     
-    // findOneAndUpdate with upsert:true is the perfect tool for this job.
+    // findOneAndUpdate with upsert:true is the perfect tool for this.
     // - If a profile for this employee exists, it will be UPDATED.
     // - If no profile exists, a new one will be CREATED.
     const updatedProfile = await EmployeeSalaryProfile.findOneAndUpdate(
-      { employee: employeeId }, // The filter to find the document
-      profileData,              // The data to update or insert
+      { employee: employeeId }, // The filter to find the document to update/create
+      profileData,              // The data to set
       { new: true, upsert: true, runValidators: true } // Options
     ).populate('components.component');
 
