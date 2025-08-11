@@ -4,7 +4,7 @@ import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 import connectDB from './mongodb.js';
 import employeeRoutes from './routes/employee.js';
-import employeeSalaryRoutes from './routes/employeeSalary.js';
+
 import employeeTaskRoutes from './routes/employeeTask.js';
 import hrPolicyRoutes from './routes/hrPolicy.js';
 import leavePolicyRoutes from './routes/leavePolicy.js';
@@ -35,7 +35,7 @@ app.get('/', (req, res) => {
 });
 
 app.use('/api/employees', auth, employeeRoutes);
-app.use('/api/employee-salaries', auth, employeeSalaryRoutes);
+
 app.use('/api/employee-tasks', auth, employeeTaskRoutes);
 app.use('/api/hr-policies', auth, hrPolicyRoutes);
 app.use('/api/leave-policies', auth, leavePolicyRoutes);
