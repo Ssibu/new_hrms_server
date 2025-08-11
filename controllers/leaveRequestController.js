@@ -48,7 +48,7 @@ async function getMonthlyUsage(employeeId, leaveType, date) {
 export const createLeaveRequest = async (req, res) => {
   try {
     const { leaveType, fromDate, toDate, reason } = req.body;
-    const employeeId = req.user.userId;
+    const employeeId = req.user.employeeId;
 
     // 1. Find the governing policy for the requested leave type
     const policy = await LeavePolicy.findOne({ type: leaveType });
@@ -137,7 +137,7 @@ export const updateLeaveRequestStatus = async (req, res) => {
     const { status, remarks } = req.body;
     const requestId = req.params.id;
 
-    // 1. Initial validation (remains the same)
+    // 1. Initial validation
     if (!['Approved', 'Rejected'].includes(status)) {
       return res.status(400).json({ error: "Invalid status." });
     }
@@ -150,10 +150,8 @@ export const updateLeaveRequestStatus = async (req, res) => {
       return res.status(400).json({ error: `This leave request has already been '${leaveRequest.status}'.` });
     }
 
-    // --- START: MODIFIED & NEW LOGIC FOR APPROVAL ---
+    // --- START: MODIFIED LOGIC FOR APPROVAL ---
     if (status === 'Approved') {
-      // First, calculate the number of working days in the request.
-      // This is more reliable than using a pre-saved number.
       const days = calculateWorkingDays(leaveRequest.fromDate, leaveRequest.toDate);
 
       // A. Update leave balance if the leave is 'Paid'
@@ -163,19 +161,19 @@ export const updateLeaveRequestStatus = async (req, res) => {
             leaveType: leaveRequest.leaveType,
             year: new Date(leaveRequest.fromDate).getFullYear()
         });
-
-        // Safety check: ensure balance is still sufficient
         if (!balance || (balance.total - balance.used < days)) {
             return res.status(400).json({ error: `Cannot approve: Employee has insufficient balance.` });
         }
-        
-        await LeaveBalance.updateOne(
-          { _id: balance._id },
-          { $inc: { used: days } }
-        );
+        await LeaveBalance.updateOne({ _id: balance._id }, { $inc: { used: days } });
       }
 
-      // B. NEW: Update attendance records for EVERY approved leave (Paid or Unpaid)
+      // B. --- THIS IS THE CRITICAL CHANGE ---
+      // Determine the correct attendance status based on the leave category.
+      // If it's a Paid leave (CL, EL, SL), status is 'On Leave'.
+      // If it's an Unpaid leave (LWP), status is 'Absent'.
+      const attendanceStatus = leaveRequest.leaveCategory === 'Paid' ? 'On Leave' : 'Absent';
+
+      // C. Update attendance records for the entire leave duration
       const startDate = new Date(leaveRequest.fromDate);
       const endDate = new Date(leaveRequest.toDate);
       let currentDate = startDate;
@@ -185,24 +183,23 @@ export const updateLeaveRequestStatus = async (req, res) => {
         if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Process only weekdays
           
           const recordDate = new Date(currentDate);
-          recordDate.setUTCHours(0, 0, 0, 0); // Normalize date for consistent querying
+          recordDate.setUTCHours(0, 0, 0, 0);
 
           await Attendance.findOneAndUpdate(
             { employee: leaveRequest.employee, date: recordDate },
             { 
-              status: 'On Leave',
-              onLeaveRequest: leaveRequest._id // Link to this leave request
+              status: attendanceStatus,      // <-- Use the new conditional status
+              onLeaveRequest: leaveRequest._id // Link to this leave request for traceability
             },
-            { upsert: true, new: true } // Creates the record if it doesn't exist
+            { upsert: true, new: true }
           );
         }
         currentDate.setDate(currentDate.getDate() + 1);
       }
     }
-    // --- END: MODIFIED & NEW LOGIC FOR APPROVAL ---
+    // --- END: MODIFIED LOGIC FOR APPROVAL ---
 
-
-    // 3. Finalize the leave request update (remains the same)
+    // 3. Finalize the leave request update
     leaveRequest.status = status;
     leaveRequest.remarks = remarks;
     leaveRequest.actionBy = req.user.userId;
