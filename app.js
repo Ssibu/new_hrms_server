@@ -16,6 +16,7 @@ import auth from './middleware/auth.js';
 import userRoutes from './routes/user.js';
 import payrollRoutes from './routes/payroll.routes.js'; 
 import salaryComponentRoutes from './routes/salaryComponent.routes.js';
+import employeeSalaryProfileRoutes from './routes/employeeSalaryProfile.routes.js';
 
 dotenv.config();
 
@@ -46,6 +47,7 @@ app.use('/api/users', auth, userRoutes);
 app.use('/api/attendance', auth, attendanceRoutes);
 app.use('/api/payroll', auth, payrollRoutes);
 app.use('/api/salary-components', auth, salaryComponentRoutes);
+app.use('/api/employee-salary-profiles', auth, employeeSalaryProfileRoutes);
 
 const PORT = process.env.PORT || 5000;
 connectDB().then(() => {
