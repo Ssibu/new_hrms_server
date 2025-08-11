@@ -7,7 +7,7 @@ import permit from '../middleware/permission.js';
 
 const router = Router();
 
-// We use the same 'payroll:manage' permission for consistency
+// We use 'payroll:manage' permission to keep all salary-related management consistent.
 router.get('/:employeeId', permit('payroll:manage'), getProfileByEmployeeId);
 router.put('/:employeeId', permit('payroll:manage'), createOrUpdateProfile);
 
