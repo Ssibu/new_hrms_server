@@ -1,51 +1,67 @@
 import mongoose from 'mongoose';
 
+/**
+ * This sub-schema defines a SINGLE salary rule assigned to an employee.
+ * It now includes logic for complex percentage calculations and stores the result.
+ */
 const AssignedComponentSchema = new mongoose.Schema({
   /**
-   * A direct link to a component in the master SalaryComponent library.
+   * Link to the master component definition (e.g., "House Rent Allowance").
    */
   component: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'SalaryComponent',
     required: true
   },
+
   /**
-   * The calculation method for this component, chosen by HR for this employee.
+   * The calculation method.
+   * 'Fixed': A direct currency amount.
+   * 'Percentage': A percentage of other components.
    */
   calculationType: {
     type: String,
     enum: ['Fixed', 'Percentage'],
     required: true
   },
+
   /**
-   * The value for the calculation, set by HR for this employee.
+   * The value for the calculation.
+   * e.g., 50000 for a Fixed 'Basic Salary', or 40 for a Percentage 'HRA'.
    */
   value: {
     type: Number,
-    required: true
+    required: true,
+    min: 0
   },
   
-  // --- NEW FIELDS AS PER YOUR SENIOR'S REQUIREMENT ---
   /**
-   * The calculated amount for this component, stored directly in the profile.
-   * This will need to be recalculated and updated every time the basic salary changes.
+   * --- NEW FIELD ---
+   * This field is ONLY used when calculationType is 'Percentage'.
+   * It holds an array of master component IDs that this component's percentage
+   * should be calculated on.
+   * Example: For HRA, this array could contain the ObjectIDs for 'Basic Salary'
+   * and 'Dearness Allowance'.
+   */
+  percentageOf: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'SalaryComponent'
+  }],
+
+  /**
+   * --- RE-INCLUDED AS REQUESTED ---
+   * The final calculated amount for this specific component in this profile.
+   * IMPORTANT: This value is not set manually. It MUST be calculated and updated by
+   * the backend controller every time the profile is saved or updated.
+   * For example, if 'Basic Salary' changes, the amount for 'HRA' must be
+   * recalculated and saved automatically.
    */
   amount: {
     type: Number,
     required: true,
     default: 0
-  },
-  /**
-   * A boolean flag to indicate if this component's calculation is based on days.
-   * (e.g., pro-rated).
-   */
-  days: {
-    type: Boolean,
-    default: false
   }
-  // --- END OF NEW FIELDS ---
-
-}, { _id: false });
+}, { _id: false }); // _id is not needed for this sub-document
 
 
 const EmployeeSalaryProfileSchema = new mongoose.Schema({
@@ -60,12 +76,8 @@ const EmployeeSalaryProfileSchema = new mongoose.Schema({
   },
   
   /**
-   * The employee's specific basic salary, set by HR on the assignment page.
-   */
-  
-
-  /**
-   * An array of all the salary component rules assigned to this employee.
+   * An array of all the salary component rules and their calculated values
+   * assigned to this employee.
    */
   components: [AssignedComponentSchema]
 }, { timestamps: true });
