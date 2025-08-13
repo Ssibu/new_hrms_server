@@ -23,11 +23,13 @@ const SalaryComponentSchema = new mongoose.Schema({
   },
 
   /**
-   * A flag for future tax calculation enhancements.
+   * If true, this component's value will be pro-rated based on days present.
+   * e.g., (Component Value * Days Present) / Total Days in Month.
+   * If false, the component value is fixed and not affected by attendance.
    */
-  isTaxable: {
+  isProRata: {
     type: Boolean,
-    default: true
+    default: false // Defaulting to false is safer. Let the user explicitly enable it.
   }
 }, { timestamps: true });
 
