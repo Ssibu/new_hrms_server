@@ -5,8 +5,8 @@ import SalaryComponent from '../models/SalaryComponent.js';
 // @access  Private (HR/Admin)
 export const createSalaryComponent = async (req, res) => {
   try {
-    // This controller now only expects 'name' and 'type' from the request body.
-    const { name, type } = req.body;
+    // --- UPDATED: Destructure isProRata from the request body ---
+    const { name, type, isProRata } = req.body;
 
     if (!name || !type) {
       return res.status(400).json({ error: 'Component name and type are required.' });
@@ -17,7 +17,9 @@ export const createSalaryComponent = async (req, res) => {
       return res.status(400).json({ error: 'A salary component with this name already exists.' });
     }
 
-    const newComponent = new SalaryComponent({ name, type });
+    // --- UPDATED: Include isProRata in the new component creation ---
+    // If isProRata is not provided in the request, it will use the schema's default value (false).
+    const newComponent = new SalaryComponent({ name, type, isProRata });
     await newComponent.save();
     res.status(201).json(newComponent);
   } catch (err) {
@@ -58,7 +60,8 @@ export const getSalaryComponentById = async (req, res) => {
 // @access  Private (HR/Admin)
 export const updateSalaryComponent = async (req, res) => {
   try {
-    // The request body should only contain fields to be updated, like 'name' or 'type'.
+    // This function already works correctly as it passes the whole req.body.
+    // It will correctly update the isProRata field if it's included in the request.
     const updatedComponent = await SalaryComponent.findByIdAndUpdate(
       req.params.id,
       req.body,
